@@ -1,0 +1,232 @@
+--- rspamd-1.3.5/src/libcryptobox/cryptobox.c.omv~	2016-09-17 14:46:16.722429415 +0200
++++ rspamd-1.3.5/src/libcryptobox/cryptobox.c	2016-09-17 15:08:06.784867231 +0200
+@@ -314,7 +314,7 @@ rspamd_cryptobox_init (void)
+ 	ctx->curve25519_impl = curve25519_load ();
+ 	ctx->blake2_impl = blake2b_load ();
+ 	ctx->ed25519_impl = ed25519_load ();
+-#ifdef HAVE_USABLE_OPENSSL
++#if defined(HAVE_USABLE_OPENSSL) && OPENSSL_VERSION_NUMBER < 0x10100000L
+ 	ERR_load_ECDSA_strings ();
+ 	ERR_load_EC_strings ();
+ 	ERR_load_RAND_strings ();
+@@ -479,14 +479,15 @@ rspamd_cryptobox_sign (guchar *sig, gsiz
+ #else
+ 		EC_KEY *lk;
+ 		BIGNUM *bn_sec, *kinv = NULL, *rp = NULL;
+-		EVP_MD_CTX sha_ctx;
++		EVP_MD_CTX *sha_ctx = EVP_MD_CTX_new();
+ 		unsigned char h[64];
+ 		guint diglen = rspamd_cryptobox_signature_bytes (mode);
+ 
+ 		/* Prehash */
+-		g_assert (EVP_DigestInit (&sha_ctx, EVP_sha512()) == 1);
+-		EVP_DigestUpdate (&sha_ctx, m, mlen);
+-		EVP_DigestFinal (&sha_ctx, h, NULL);
++		g_assert (EVP_DigestInit (sha_ctx, EVP_sha512()) == 1);
++		EVP_DigestUpdate (sha_ctx, m, mlen);
++		EVP_DigestFinal (sha_ctx, h, NULL);
++		EVP_MD_CTX_free(sha_ctx);
+ 
+ 		/* Key setup */
+ 		lk = EC_KEY_new_by_curve_name (CRYPTOBOX_CURVE_NID);
+@@ -529,13 +530,14 @@ rspamd_cryptobox_verify (const guchar *s
+ 		EC_KEY *lk;
+ 		EC_POINT *ec_pub;
+ 		BIGNUM *bn_pub;
+-		EVP_MD_CTX sha_ctx;
++		EVP_MD_CTX *sha_ctx = EVP_MD_CTX_new();
+ 		unsigned char h[64];
+ 
+ 		/* Prehash */
+-		g_assert (EVP_DigestInit (&sha_ctx, EVP_sha512()) == 1);
+-		EVP_DigestUpdate (&sha_ctx, m, mlen);
+-		EVP_DigestFinal (&sha_ctx, h, NULL);
++		g_assert (EVP_DigestInit (sha_ctx, EVP_sha512()) == 1);
++		EVP_DigestUpdate (sha_ctx, m, mlen);
++		EVP_DigestFinal (sha_ctx, h, NULL);
++		EVP_MD_CTX_free(sha_ctx);
+ 
+ 		/* Key setup */
+ 		lk = EC_KEY_new_by_curve_name (CRYPTOBOX_CURVE_NID);
+@@ -559,6 +561,7 @@ rspamd_cryptobox_verify (const guchar *s
+ 	return ret;
+ }
+ 
++#if OPENSSL_VERSION_NUMBER < 0x10100000L
+ static gsize
+ rspamd_cryptobox_encrypt_ctx_len (enum rspamd_cryptobox_mode mode)
+ {
+@@ -575,6 +578,7 @@ rspamd_cryptobox_encrypt_ctx_len (enum r
+ 
+ 	return 0;
+ }
++#endif
+ 
+ static gsize
+ rspamd_cryptobox_auth_ctx_len (enum rspamd_cryptobox_mode mode)
+@@ -616,7 +620,7 @@ rspamd_cryptobox_encrypt_init (void *enc
+ 		EVP_CIPHER_CTX *s;
+ 
+ 		s = cryptobox_align_ptr (enc_ctx, CRYPTOBOX_ALIGNMENT);
+-		memset (s, 0, sizeof (*s));
++		EVP_CIPHER_CTX_reset(s);
+ 		g_assert (EVP_EncryptInit_ex (s, EVP_aes_256_gcm (), NULL, NULL, NULL) == 1);
+ 		g_assert (EVP_CIPHER_CTX_ctrl (s, EVP_CTRL_GCM_SET_IVLEN,
+ 				rspamd_cryptobox_nonce_bytes (mode), NULL) == 1);
+@@ -787,7 +791,7 @@ rspamd_cryptobox_decrypt_init (void *enc
+ 		EVP_CIPHER_CTX *s;
+ 
+ 		s = cryptobox_align_ptr (enc_ctx, CRYPTOBOX_ALIGNMENT);
+-		memset (s, 0, sizeof (*s));
++		EVP_CIPHER_CTX_reset(s);
+ 		g_assert (EVP_DecryptInit_ex(s, EVP_aes_256_gcm (), NULL, NULL, NULL) == 1);
+ 		g_assert (EVP_CIPHER_CTX_ctrl (s, EVP_CTRL_GCM_SET_IVLEN,
+ 				rspamd_cryptobox_nonce_bytes (mode), NULL) == 1);
+@@ -959,6 +963,9 @@ rspamd_cryptobox_cleanup (void *enc_ctx,
+ 		EVP_CIPHER_CTX *s = enc_ctx;
+ 
+ 		EVP_CIPHER_CTX_cleanup (s);
++#if OPENSSL_VERSION_NUMBER >= 0x10100000L
++		EVP_CIPHER_CTX_free (s);
++#endif
+ #endif
+ 	}
+ }
+@@ -972,7 +979,11 @@ void rspamd_cryptobox_encrypt_nm_inplace
+ 	gsize r;
+ 	void *enc_ctx, *auth_ctx;
+ 
++#if OPENSSL_VERSION_NUMBER >= 0x10100000L
++	enc_ctx = EVP_CIPHER_CTX_new();
++#else
+ 	enc_ctx = g_alloca (rspamd_cryptobox_encrypt_ctx_len (mode));
++#endif
+ 	auth_ctx = g_alloca (rspamd_cryptobox_auth_ctx_len (mode));
+ 
+ 	enc_ctx = rspamd_cryptobox_encrypt_init (enc_ctx, nonce, nm, mode);
+@@ -1016,7 +1027,11 @@ rspamd_cryptobox_encryptv_nm_inplace (st
+ 	guchar *out, *in;
+ 	gsize r, remain, inremain, seg_offset;
+ 
++#if OPENSSL_VERSION_NUMBER >= 0x10100000L
++	enc_ctx = EVP_CIPHER_CTX_new();
++#else
+ 	enc_ctx = g_alloca (rspamd_cryptobox_encrypt_ctx_len (mode));
++#endif
+ 	auth_ctx = g_alloca (rspamd_cryptobox_auth_ctx_len (mode));
+ 
+ 	enc_ctx = rspamd_cryptobox_encrypt_init (enc_ctx, nonce, nm, mode);
+@@ -1122,7 +1137,11 @@ rspamd_cryptobox_decrypt_nm_inplace (guc
+ 	gboolean ret = TRUE;
+ 	void *enc_ctx, *auth_ctx;
+ 
++#if OPENSSL_VERSION_NUMBER >= 0x10100000L
++	enc_ctx = EVP_CIPHER_CTX_new();
++#else
+ 	enc_ctx = g_alloca (rspamd_cryptobox_encrypt_ctx_len (mode));
++#endif
+ 	auth_ctx = g_alloca (rspamd_cryptobox_auth_ctx_len (mode));
+ 
+ 	enc_ctx = rspamd_cryptobox_decrypt_init (enc_ctx, nonce, nm, mode);
+--- rspamd-1.3.5/src/libcryptobox/ed25519/ref.c.omv~	2016-09-17 14:49:51.946533386 +0200
++++ rspamd-1.3.5/src/libcryptobox/ed25519/ref.c	2016-09-17 15:07:02.088767884 +0200
+@@ -28,11 +28,11 @@ ed_seed_keypair_ref (unsigned char *pk,
+ 		const unsigned char *seed)
+ {
+ 	ge_p3 A;
+-	EVP_MD_CTX sha_ctx;
++	EVP_MD_CTX *sha_ctx = EVP_MD_CTX_new();
+ 
+-	g_assert (EVP_DigestInit (&sha_ctx, EVP_sha512()) == 1);
+-	EVP_DigestUpdate (&sha_ctx, seed, 32);
+-	EVP_DigestFinal (&sha_ctx, sk, NULL);
++	g_assert (EVP_DigestInit (sha_ctx, EVP_sha512()) == 1);
++	EVP_DigestUpdate (sha_ctx, seed, 32);
++	EVP_DigestFinal (sha_ctx, sk, NULL);
+ 
+ 	sk[0] &= 248;
+ 	sk[31] &= 63;
+@@ -44,6 +44,8 @@ ed_seed_keypair_ref (unsigned char *pk,
+ 	memmove (sk, seed, 32);
+ 	memmove (sk + 32, pk, 32);
+ 
++	EVP_MD_CTX_free(sha_ctx);
++
+ 	return 0;
+ }
+ 
+@@ -64,7 +66,7 @@ int
+ ed_verify_ref(const unsigned char *sig, const unsigned char *m,
+ 		size_t mlen, const unsigned char *pk)
+ {
+-	EVP_MD_CTX sha_ctx;
++	EVP_MD_CTX *sha_ctx = EVP_MD_CTX_new();
+ 	unsigned char h[64];
+ 	unsigned char rcheck[32];
+ 	unsigned int i;
+@@ -85,11 +87,12 @@ ed_verify_ref(const unsigned char *sig,
+ 		return -1;
+ 	}
+ 
+-	g_assert (EVP_DigestInit (&sha_ctx, EVP_sha512()) == 1);
+-	EVP_DigestUpdate (&sha_ctx, sig, 32);
+-	EVP_DigestUpdate (&sha_ctx, pk, 32);
+-	EVP_DigestUpdate (&sha_ctx, m, mlen);
+-	EVP_DigestFinal (&sha_ctx, h, NULL);
++	g_assert (EVP_DigestInit (sha_ctx, EVP_sha512()) == 1);
++	EVP_DigestUpdate (sha_ctx, sig, 32);
++	EVP_DigestUpdate (sha_ctx, pk, 32);
++	EVP_DigestUpdate (sha_ctx, m, mlen);
++	EVP_DigestFinal (sha_ctx, h, NULL);
++	EVP_MD_CTX_free (sha_ctx);
+ 	sc_reduce (h);
+ 
+ 	ge_double_scalarmult_vartime (&R, h, &A, sig + 32);
+@@ -103,23 +106,23 @@ ed_sign_ref(unsigned char *sig, size_t *
+ 		const unsigned char *m, size_t mlen,
+ 		const unsigned char *sk)
+ {
+-	EVP_MD_CTX sha_ctx;
++	EVP_MD_CTX *sha_ctx = EVP_MD_CTX_new();
+ 	unsigned char az[64];
+ 	unsigned char nonce[64];
+ 	unsigned char hram[64];
+ 	ge_p3 R;
+ 
+-	g_assert (EVP_DigestInit (&sha_ctx, EVP_sha512()) == 1);
+-	EVP_DigestUpdate (&sha_ctx, sk, 32);
+-	EVP_DigestFinal (&sha_ctx, az, NULL);
++	g_assert (EVP_DigestInit (sha_ctx, EVP_sha512()) == 1);
++	EVP_DigestUpdate (sha_ctx, sk, 32);
++	EVP_DigestFinal (sha_ctx, az, NULL);
+ 	az[0] &= 248;
+ 	az[31] &= 63;
+ 	az[31] |= 64;
+ 
+-	g_assert (EVP_DigestInit (&sha_ctx, EVP_sha512()) == 1);
+-	EVP_DigestUpdate (&sha_ctx, az + 32, 32);
+-	EVP_DigestUpdate (&sha_ctx, m, mlen);
+-	EVP_DigestFinal (&sha_ctx, nonce, NULL);
++	g_assert (EVP_DigestInit (sha_ctx, EVP_sha512()) == 1);
++	EVP_DigestUpdate (sha_ctx, az + 32, 32);
++	EVP_DigestUpdate (sha_ctx, m, mlen);
++	EVP_DigestFinal (sha_ctx, nonce, NULL);
+ 
+ 	memmove (sig + 32, sk + 32, 32);
+ 
+@@ -127,10 +130,11 @@ ed_sign_ref(unsigned char *sig, size_t *
+ 	ge_scalarmult_base (&R, nonce);
+ 	ge_p3_tobytes (sig, &R);
+ 
+-	g_assert (EVP_DigestInit (&sha_ctx, EVP_sha512()) == 1);
+-	EVP_DigestUpdate (&sha_ctx, sig, 64);
+-	EVP_DigestUpdate (&sha_ctx, m, mlen);
+-	EVP_DigestFinal (&sha_ctx, hram, NULL);
++	g_assert (EVP_DigestInit (sha_ctx, EVP_sha512()) == 1);
++	EVP_DigestUpdate (sha_ctx, sig, 64);
++	EVP_DigestUpdate (sha_ctx, m, mlen);
++	EVP_DigestFinal (sha_ctx, hram, NULL);
++	EVP_MD_CTX_free(sha_ctx);
+ 
+ 	sc_reduce (hram);
+ 	sc_muladd (sig + 32, hram, az, nonce);
