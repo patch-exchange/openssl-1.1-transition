@@ -1,0 +1,37 @@
+--- opendkim-2.8.3/configure.ac.omv~	2016-09-17 21:21:38.071261893 +0200
++++ opendkim-2.8.3/configure.ac	2016-09-17 21:22:00.690949538 +0200
+@@ -835,7 +835,7 @@ then
+ 	AC_SEARCH_LIBS([ERR_peek_error], [crypto], ,
+ 	               AC_MSG_ERROR([libcrypto not found]))
+ 
+-	AC_SEARCH_LIBS([SSL_library_init], [ssl], ,
++	AC_SEARCH_LIBS([OPENSSL_init_ssl], [ssl], ,
+ 		[
+ 			if test x"$enable_shared" = x"yes"
+ 			then
+@@ -847,11 +847,11 @@ then
+ 				              opendkim to use.])
+ 			fi
+ 
+-			# avoid caching issue - last result of SSL_library_init
++			# avoid caching issue - last result of OPENSSL_init_ssl
+ 			# shouldn't be cached for this next check
+-			unset ac_cv_search_SSL_library_init
++			unset ac_cv_search_OPENSSL_init_ssl
+ 			LIBCRYPTO_LIBS="$LIBCRYPTO_LIBS -ldl"
+-			AC_SEARCH_LIBS([SSL_library_init], [ssl], ,
++			AC_SEARCH_LIBS([OPENSSL_init_ssl], [ssl], ,
+ 			               AC_MSG_ERROR([libssl not found]), [-ldl])
+ 		]
+ 	)
+--- opendkim-2.8.3/opendkim/opendkim-crypto.c.omv~	2016-09-17 21:22:06.692866668 +0200
++++ opendkim-2.8.3/opendkim/opendkim-crypto.c	2016-09-17 21:22:11.275803394 +0200
+@@ -358,7 +358,7 @@ dkimf_crypto_init(void)
+ 		return status;
+ 
+ 	SSL_load_error_strings();
+-	SSL_library_init();
++	OPENSSL_init_ssl(0, NULL);
+ 	ERR_load_crypto_strings();
+ 
+ 	CRYPTO_set_id_callback(&dkimf_crypto_get_id);
