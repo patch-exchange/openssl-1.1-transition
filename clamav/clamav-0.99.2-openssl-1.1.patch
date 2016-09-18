@@ -1,0 +1,33 @@
+--- clamav-0.99.2/libclamav/crypto.c.omv~	2016-09-18 18:11:34.723085234 +0200
++++ clamav-0.99.2/libclamav/crypto.c	2016-09-18 18:11:48.296898159 +0200
+@@ -121,7 +121,7 @@ time_t timegm(struct tm *t)
+ int cl_initialize_crypto(void)
+ {
+     SSL_load_error_strings();
+-    SSL_library_init();
++    OPENSSL_init_ssl(0, NULL);
+     OpenSSL_add_all_digests();
+     OpenSSL_add_all_algorithms();
+     OpenSSL_add_all_ciphers();
+--- clamav-0.99.2/m4/reorganization/libs/openssl.m4.omv~	2016-09-18 18:11:11.071411211 +0200
++++ clamav-0.99.2/m4/reorganization/libs/openssl.m4	2016-09-18 18:11:22.872248566 +0200
+@@ -41,7 +41,7 @@ fi
+ have_ssl="no"
+ have_crypto="no"
+ 
+-AC_CHECK_LIB([ssl], [SSL_library_init], [have_ssl="yes"], [AC_MSG_ERROR([Your OpenSSL installation is misconfigured or missing])], [-lcrypto -lz])
++AC_CHECK_LIB([ssl], [OPENSSL_init_ssl], [have_ssl="yes"], [AC_MSG_ERROR([Your OpenSSL installation is misconfigured or missing])], [-lcrypto -lz])
+ 
+ AC_CHECK_LIB([crypto], [EVP_EncryptInit], [have_crypto="yes"], [AC_MSG_ERROR([Your OpenSSL installation is misconfigured or missing])], [-lcrypto -lz])
+ 
+--- clamav-0.99.2/libclamav/crypto.c.omv~	2016-09-18 18:15:48.514588018 +0200
++++ clamav-0.99.2/libclamav/crypto.c	2016-09-18 18:18:26.332413758 +0200
+@@ -1110,7 +1110,7 @@ X509_CRL *cl_load_crl(const char *file)
+     fclose(fp);
+ 
+     if ((x)) {
+-        tm = cl_ASN1_GetTimeT(x->crl->nextUpdate);
++        tm = cl_ASN1_GetTimeT(X509_CRL_get0_nextUpdate(x));
+         if (!(tm)) {
+             X509_CRL_free(x);
+             return NULL;
