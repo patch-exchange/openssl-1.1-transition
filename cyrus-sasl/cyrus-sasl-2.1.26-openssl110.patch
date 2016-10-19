@@ -12,8 +12,8 @@ diff -up cyrus-sasl-2.1.26/plugins/ntlm.c.openssl110 cyrus-sasl-2.1.26/plugins/n
 +#if OPENSSL_VERSION_NUMBER >= 0x10100000L
 +    return HMAC_CTX_new();
 +#else
-+    return utils->malloc(sizeof(EVP_MD_CTX));
-+#endif    
++    return utils->malloc(sizeof(HMAC_CTX));
++#endif
 +}
 +
 +static void _plug_HMAC_CTX_free(HMAC_CTX *ctx, const sasl_utils_t *utils)
@@ -25,7 +25,7 @@ diff -up cyrus-sasl-2.1.26/plugins/ntlm.c.openssl110 cyrus-sasl-2.1.26/plugins/n
 +#else
 +    HMAC_cleanup(ctx);
 +    utils->free(ctx);
-+#endif    
++#endif
 +}
 +
  static unsigned char *V2(unsigned char *V2, sasl_secret_t *passwd,
